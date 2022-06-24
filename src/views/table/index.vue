@@ -19,22 +19,14 @@
           <el-row>
             <el-col :span="13">
               <el-form-item label="电影类别">
-                <el-select
+                <el-autocomplete
                   v-model="form.category"
-                  filterable
-                  remote
-                  clearable
+                  :fetch-suggestions="categoryRemoteSearch"
                   placeholder="请选择电影类别"
-                  :remote-method="categoryRemoteSearch"
-                  :loading="categoryLoading"
-                >
-                  <el-option
-                    v-for="item in movieCategory"
-                    :key="item.value"
-                    :label="item.value"
-                    :value="item.value"
-                  />
-                </el-select>
+                  style="width: 20vw;"
+                  clearable
+                  @select="handleCategorySelect"
+                />
                 <!-- <el-select v-model="form.category" placeholder="请选择电影类别">
                   <el-option label="Zone one" value="shanghai" />
                   <el-option label="Zone two" value="beijing" />
@@ -85,15 +77,6 @@
               @keyup.enter.native="handleDirectorInputConfirm(true)"
               @select="handleDirectorSelect"
             />
-            <!-- <el-input
-                class="input-new-tag"
-                v-if="directorInputVisible"
-                v-model="directorInputValue"
-                ref="saveDirectorTagInput"
-                size="small"
-                @keyup.enter.native="handleDirectorInputConfirm"
-                @blur="handleDirectorInputConfirm"
-              > -->
 
             <el-button
               v-if="!directorInputVisible && form.movieDirectors.length<5"
@@ -199,11 +182,11 @@
           </el-form-item>
 
           <el-form-item label="正面评价">
-            <el-progress type="dashboard" size="mini" :percentage="form.positive" :color="percentageColors"></el-progress>
-              <div>
-                <el-button-group>
-                  <el-input-number v-model="form.positive"  :min="0" :max="100" size="mini"></el-input-number>
-                </el-button-group>
+            <el-progress type="dashboard" size="mini" :percentage="form.positive" :color="percentageColors" />
+            <div>
+              <el-button-group>
+                <el-input-number v-model="form.positive" :min="0" :max="100" size="mini" />
+              </el-button-group>
             </div>
           </el-form-item>
 
@@ -226,8 +209,6 @@
               :min="form.movieMinScore"
             />
           </el-form-item>
-
-
 
           <el-form-item>
             <el-button type="primary" @click="searchMovie">查询</el-button>
@@ -274,13 +255,13 @@
                     <el-form-item label="负面评价">
                       <span>{{ props.row.negative }}</span>
                     </el-form-item>
-                    <el-form-item v-if="props.row.director.length!==0" label="导演">
+                    <el-form-item v-if="props.row.director !== undefined && props.row.director.length!==0" label="导演">
                       <span v-for="i in props.row.director">{{ i }}, </span>
                     </el-form-item>
-                    <el-form-item v-if="props.row.mainActor.length!==0" label="主演">
+                    <el-form-item v-if="props.row.mainActor !== undefined && props.row.mainActor.length!==0" label="主演">
                       <span v-for="i in props.row.mainActor">{{ i }}, </span>
                     </el-form-item>
-                    <el-form-item v-if="props.row.actor.length!==0" label="演员">
+                    <el-form-item v-if="props.row.actor!== undefined && props.row.actor.length!==0" label="演员">
                       <span v-for="i in props.row.actor">{{ i }}, </span>
                     </el-form-item>
                     <el-form-item label="评分">
@@ -351,6 +332,12 @@
 
 <script>
 import 'echarts/lib/component/title'
+import {
+  fuzzySearchMainActor,
+  fuzzySearchMovieCategory,
+  fuzzySearchMovieDirector,
+  fuzzySearchMoviename, GetActorsByMovieAsin, GetDirectorByAsin, GetMainActorByAsin, SearchMovieByMysql
+} from '@/api/MovieSearching'
 /* eslint-disable */
 export default {
   filters: {
@@ -457,7 +444,7 @@ export default {
           title:{
             show:true,
             text:'检索电影',
-            subtext:'通过关系型数据库MySql、分布式数据库Hive和图数据库Neo4j分别检索电影的速度对比',
+            subtext:'通过关系型数据库MySql和图数据库Neo4j分别检索电影的速度对比',
             // textAlign:'center',
           },
           // 图标顶部的标题及按钮
@@ -577,7 +564,6 @@ export default {
         columns: ["type","speed"],
         rows: [
           { "type":"关系型数据库","software": "mysql", "speed": 0 },
-          { "type":"分布式数据库","software": "hive", "speed": 0 },
           { "type":"图数据库","software": "neo4j", "speed": 0 },
         ],
       },
@@ -590,7 +576,7 @@ export default {
       actorInputValue:'',
       activeName: 'first',
       searchText:'暂无查询',
-      BASE_URL:'http://localhost:8101',
+      BASE_URL:'http://47.102.195.143:6001/',
       movieData:[],
 
       categoryLoading:false,
@@ -611,6 +597,9 @@ export default {
     handleSelect(item) {
       console.log(item);
     },
+    handleCategorySelect(item){
+      console.log(item);
+    },
     handleDirectorSelect(item) {
       this.handleDirectorInputConfirm(false)
     },
@@ -624,108 +613,47 @@ export default {
      * 下面是搜索建议的函数
      **/
     movieSearchSuggest(queryString, cb){
-      var axios = require('axios');
-
-      var config = {
-        method: 'get',
-        url: this.BASE_URL+'/mysql/association/movie',
-        params:{"movieName":queryString},
-        headers: { }
-      };
-
-      // 向mysql 发送请求
-      axios(config)
-      .then(response=> {
-        console.log(response.data)
+      fuzzySearchMoviename(queryString)
+      .then(response =>{
         var result=[]
         for(let i=0;i<response.data.length;++i){
           result.push({"value":response.data[i]})
         }
         cb(result);
       })
-      .catch(function (error) {
-        this.$message.error('当前网络异常，请稍后再试');
-      });
     },
     directorSearchSuggest(queryString, cb){
-      var axios = require('axios');
-
-      var config = {
-        method: 'get',
-        url: this.BASE_URL+'/mysql/association/director',
-        params:{"directorName":queryString},
-        headers: { }
-      };
-
-      // 向mysql 发送请求
-      axios(config)
-      .then(response=> {
-        var result=[]
-        for(let i=response.data.length-1;i>=0;--i){
-          if(result.length>=25){
-            break
+      fuzzySearchMovieDirector(queryString)
+        .then(response =>{
+          var result=[]
+          for(let i=0;i<response.data.length;++i){
+            result.push({"value":response.data[i]})
           }
-          result.push({"value":response.data[i]})
-        }
-        cb(result);
-      })
-      .catch(function (error) {
-        this.$message.error('当前网络异常，请稍后再试');
-      });
+          cb(result);
+        })
     },
     actorSearchSuggest(queryString, cb){
-      var axios = require('axios');
-
-      var config = {
-        method: 'get',
-        url: this.BASE_URL+'/mysql/association/actor',
-        params:{"actorName":queryString},
-        headers: { }
-      };
-
-      // 向mysql 发送请求
-      axios(config)
-      .then(response=> {
-        var result=[]
-        for(let i=response.data.length-1;i>=0;--i){
-          if(result.length>=25){
-            break
+      if(queryString === '')
+          queryString = null
+      fuzzySearchMainActor(queryString)
+        .then(response =>{
+          var result=[]
+          for(let i=0;i<response.data.length;++i){
+            result.push({"value":response.data[i]})
           }
+          cb(result);
+        })
+    },
+    categoryRemoteSearch(queryString,cb){
+      if(queryString === '')
+          queryString = null
+      fuzzySearchMovieCategory(queryString)
+        .then(response=>{
+        var result = []
+        for(let i=0;i < response.data.length;++i){
           result.push({"value":response.data[i]})
         }
         cb(result);
-      })
-      .catch(function (error) {
-        this.$message.error('当前网络异常，请稍后再试');
-      });
-    },
-
-    categoryRemoteSearch(query){
-
-      this.categoryLoading = true;
-      // 发送api请求
-      var axios = require('axios');
-
-      var config = {
-        method: 'get',
-        url: this.BASE_URL+'/mysql/association/category',
-        params:{"category":query},
-        headers: { }
-      };
-
-      // 向mysql 发送请求
-      axios(config)
-      .then(response=> {
-        var result=[]
-        for(let i=response.data.length-1;i>=0;--i){
-          if(result.length>=25){
-            break
-          }
-          result.push({"value":response.data[i]})
-        }
-
-        this.movieCategory=result;
-        this.categoryLoading=false;
       })
       .catch(function (error) {
         this.$message.error('当前网络异常，请稍后再试');
@@ -743,9 +671,10 @@ export default {
     },
 
     movieDataToString(data) {
-      if (data.length == 0) {
+      if (data.length === 0) {
         return ""
       }
+      console.log('所有的data',data)
       var temp = "asin,title,edition,format,time,director,mainActor,actor,score,commentNum\n"
       for (let j = 0; j < data.length; j++) {
         let i = data[j]
@@ -770,19 +699,20 @@ export default {
         else{
           temp+=','
         }
-        if (i.director.length!=0){
+        if (i.director !== undefined && i.director.length!==0){
           temp+=String(i.director)+','
         }
         else{
           temp+=','
         }
-        if (i.mainActor.length!=0){
+        console.log('i',i)
+        if (i.mainActor !== undefined && i.mainActor.length!==0){
           temp+=String(i.mainActor)+','
         }
         else{
           temp+=','
         }
-        if (i.actor.length!=0){
+        if (i.actor !== undefined && i.actor.length!==0){
           temp+=String(i.actor)+','
         }
         else{
@@ -806,7 +736,7 @@ export default {
     },
 
     downloadFile(){
-      var blob = new Blob([this.movieDataToString(this.movieData)], {type: '.csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel'});
+      var blob = new Blob(["\ufeff" + this.movieDataToString(this.movieData)], {type: 'text/csv,charset=UTF-8'});
       const url3 = window.URL.createObjectURL(blob);
       var filename = this.searchText + '.csv';
       const link = document.createElement('a');
@@ -888,7 +818,7 @@ export default {
         }
         searchCondition.mainActors=this.form.movieMainActors
       }
-      if (this.form.movieActors.length!=0){
+      if (this.form.movieActors.length!==0){
         searchText+=" 演员有"
         for(let i=0;i<this.form.movieActors.length;++i){
           if (i!=0){
@@ -899,20 +829,16 @@ export default {
         searchCondition.actors=this.form.movieActors
       }
 
-      if(this.form.movieMinScore!=0 || this.form.movieMaxScore!=5){
         searchCondition.minScore=this.form.movieMinScore
         searchCondition.maxScore=this.form.movieMaxScore
         searchText+=" 评分在"+searchCondition.minScore+"到"+searchCondition.maxScore+"之间"
-      }
 
-      if(this.form.positive!=0){
         searchCondition.positive=this.form.positive
         searchText+=" 正面评价在"+searchCondition.positive+"之上"
-      }
       // 设置参数
       console.log("搜索条件为",searchCondition)
 
-      if(Object.keys(searchCondition).length==0){
+      if(Object.keys(searchCondition).length===0){
         this.$message({
           message: '请至少给出一个条件！',
           type: 'warning'
@@ -922,34 +848,18 @@ export default {
       searchText+=" 的电影"
       this.searchText=searchText
       this.vchartsConfig.extend.title.subtext=searchText
-
-
-
-      // 发送api
-      var axios = require('axios');
-
-      var config = {
-        method: 'post',
-        url: this.BASE_URL+'/neo4j/movie',
-        data:searchCondition,
-        headers: { }
-      };
       this.movieLoading=true;
 
       // 向mysql发送请求，填入请求时间即可
-      axios({
-        method: 'post',
-        url: this.BASE_URL+'/mysql/association/movie/result',
-        data:searchCondition,
-        headers: { }
-      }).then(response=>{
+      SearchMovieByMysql(searchCondition)
+      .then(response=>{
         this.chartData.rows[0].speed = response.data.time
       })
 
       // 向neo4j 发送请求
-      axios(config)
+      SearchMovieByMysql(searchCondition)
       .then(response=> {
-        this.chartData.rows[2].speed=response.data.time
+        this.chartData.rows[1].speed=response.data.time
         console.log(response.data)
         let movieList=response.data.movies
         this.movieNumber = response.data.movieNum
@@ -994,36 +904,21 @@ export default {
 
         // 发送api获取导演信息、主演信息、演员信息
         for(let i=0;i<this.movieData.length;++i){
-          axios({
-            method: 'get',
-            url: this.BASE_URL + '/mysql/association/movie/director',
-            params:{"movieAsin":this.movieData[i].asin, "index": i},
-            headers: {}
-          })
+          GetDirectorByAsin(this.movieData[i].asin,i)
           .then(response => {
             this.movieData[response.data.index].director=response.data.director
           })
-          axios({
-            method: 'get',
-            url: this.BASE_URL + '/mysql/association/movie/mainActor',
-            params:{"movieAsin":this.movieData[i].asin, "index": i},
-            headers: {}
-          })
+
+          GetMainActorByAsin(this.movieData[i].asin, i)
           .then(response => {
             this.movieData[response.data.index].mainActor=response.data.mainActor
           })
-          axios({
-            method: 'get',
-            url: this.BASE_URL + '/mysql/association/movie/actor',
-            params:{"movieAsin":this.movieData[i].asin, "index": i},
-            headers: {}
-          })
+
+          GetActorsByMovieAsin(this.movieData[i].asin,i)
           .then(response => {
             this.movieData[response.data.index].actor=response.data.actor
           })
         }
-
-
 
       })
       .catch(error=> {
@@ -1038,7 +933,7 @@ export default {
       this.movieData.splice(0,this.movieData.length)
       this.hasResult=false
       this.movieLoading=false
-      for(let i=0;i<3;++i){
+      for(let i=0;i<2;++i){
         this.chartData.rows[i].speed=0
       }
       this.searchText="暂无查询"
@@ -1135,8 +1030,9 @@ export default {
       this.form.movieActors.splice(this.form.movieActors.indexOf(tag), 1);
     },
     exampleTest(){
-      this.form.category='Comedy';
+      this.form.category='Drama';
       this.form.movieMinScore=2.5;
+      this.form.positive = 40
       this.searchMovie();
     },
   }

@@ -8,27 +8,27 @@
       @close="dialogVisible=false;"
     >
       <div>
-        <p>asin:{{dialogData.asin}}</p>
-        
-        <p>电影名:{{dialogData.name}}</p>
-        <p v-if="dialogData.director.length!==0" >
+        <p>asin:{{ dialogData.asin }}</p>
+
+        <p>电影名:{{ dialogData.name }}</p>
+        <p v-if="dialogData.director.length!==0">
           导演：
           <span v-for="i in dialogData.director">{{ i }}, </span>
         </p>
-        <p v-if="dialogData.mainActor.length!==0" >
+        <p v-if="dialogData.mainActor.length!==0">
           主演：
           <span v-for="i in dialogData.mainActor">{{ i }}, </span>
         </p>
-        <p v-if="dialogData.actor.length!==0" >
+        <p v-if="dialogData.actor.length!==0">
           演员：
           <span v-for="i in dialogData.actor">{{ i }}, </span>
         </p>
-        <p>评分:{{dialogData.score}}</p>
-        <p>评论总数:{{dialogData.commentNum}}</p>
-        
+        <p>评分:{{ dialogData.score }}</p>
+        <p>评论总数:{{ dialogData.commentNum }}</p>
+
       </div>
       <div slot="footer">
-        <el-button type="primary" @click="viewOriginWeb()">查看原始网页</el-button>
+        <el-button type="primary" @click="viewOriginWeb(dialogData.asin)">查看原始网页</el-button>
         <br><br>
         <el-button @click="dialogVisible = false">关闭</el-button>
       </div>
@@ -46,24 +46,24 @@
         </el-form>
       </el-col>
       <el-col :span="1">
-        <el-divider direction="vertical"/>
+        <el-divider direction="vertical" />
       </el-col>
       <el-col :span="10">
         <el-tabs v-model="activeName" @tab-click="handleClick">
-          <el-tab-pane label="查询结果" name="first" v-loading="loading">
+          <el-tab-pane v-loading="loading" label="查询结果" name="first">
             {{ searchResult }}
 
           </el-tab-pane>
           <el-tab-pane label="速度对比" name="third" :disabled="!hasResult">
 
             <ve-histogram
+              v-loading="loading"
               class="myve"
               :data="chartData"
               :settings="vchartsConfig.setting"
               :extend="vchartsConfig.extend"
               width="38vw"
-              height = "50vh"
-              v-loading="loading"
+              height="50vh"
             />
           </el-tab-pane>
         </el-tabs>
@@ -95,6 +95,12 @@
 
 <script>
 import Vis from 'vis'
+import {
+  GetActorAndDirector,
+  GetActorAndDirectorOfNeo4j, GetActorByMovieAsinAndIndex, GetActorsOfNeo4j,
+  GetDirectorsByMovieAsinAndIndex, GetMainActorByMovieAsinAndIndex,
+  GetMaxCooperationActor, GetRelationsofActorsMysql
+} from '@/api/MovieCooperation'
 
 const BASE_URL = 'http://localhost:8101'
 
@@ -119,7 +125,7 @@ export default {
           title: {
             show: true,
             text: '',
-            subtext: '通过关系型数据库MySql、分布式数据库Hive和图数据库Neo4j进行检索'
+            subtext: '通过关系型数据库MySql、图数据库Neo4j进行检索'
             // textAlign:'center',
           },
           // 图标顶部的标题及按钮
@@ -234,7 +240,6 @@ export default {
         columns: ['type', 'speed'],
         rows: [
           { 'type': '关系型数据库', 'software': 'mysql', 'speed': 0 },
-          { 'type': '分布式数据库', 'software': 'hive', 'speed': 0 },
           { 'type': '图数据库', 'software': 'neo4j', 'speed': 0 }
         ]
       },
@@ -350,14 +355,14 @@ export default {
       visData: {},
 
       dialogVisible: false,
-      dialogData:{
-        asin:'',
-        name:'',
-        director:[],
-        actor:[],
-        mainActor:[],
-        score:'',
-        commentNum:0,
+      dialogData: {
+        asin: '',
+        name: '',
+        director: [],
+        actor: [],
+        mainActor: [],
+        score: '',
+        commentNum: 0
       },
 
       personColor: {
@@ -385,8 +390,8 @@ export default {
   },
 
   methods: {
-    viewOriginWeb() {
-
+    viewOriginWeb(asin) {
+      window.open('https://www.amazon.com/dp/' + asin + '/')
     },
 
     handleClick(tab, event) {
@@ -403,26 +408,18 @@ export default {
 
       var axios = require('axios')
       this.loading = true
-      var config = {
-        method: 'get',
-        url: BASE_URL + '/neo4j/relation/actorAndDirector',
-        headers: { }
-      }
-      this.vchartsConfig.extend.title.text="演员和导演之间的合作关系检索结果"
+
+      this.vchartsConfig.extend.title.text = '演员和导演之间的合作关系检索结果'
       this.hasResult = true
       // neo4j 查询
-      axios(config)
+      GetActorAndDirectorOfNeo4j()
         .then(response => {
           console.log(response.data)
-          this.chartData.rows[2].speed = response.data.time
-          this.searchResult = "名为"+response.data.actor+"的演员和名为"+response.data.director+"的导演,"+"共合作"+response.data.number+"次."
-          axios({
-            method: 'get',
-            url: BASE_URL + '/mysql/association/actor/director/cooperation',
-            headers: {}
-          }).then(response=>{
+          this.chartData.rows[1].speed = response.data.time
+          this.searchResult = '名为' + response.data.actor + '的演员和名为' + response.data.director + '的导演,' + '共合作' + response.data.number + '次.'
+          GetActorAndDirector().then(response => {
             this.chartData.rows[0].speed = response.data.time
-            this.vchartsConfig.extend.title.text="演员和导演之间的合作关系检索结果"
+            this.vchartsConfig.extend.title.text = '演员和导演之间的合作关系检索结果'
           })
 
           // 将返回值添加成两个结点
@@ -444,13 +441,7 @@ export default {
           this.nodes.add(newNode)
           this.nodesArray.push(newNode)
 
-          // 根据导演和演员获取它们出演过的电影
-          axios({
-            method: 'get',
-            url: BASE_URL + '/mysql/association/movie/actorAndDirector',
-            params: { 'actorName': response.data.actor, 'directorName': response.data.director },
-            headers: {}
-          })
+          GetActorAndDirector(response.data.actor, response.data.director)
             .then(res => {
               const movieList = res.data
               // 添加电影结点
@@ -462,8 +453,8 @@ export default {
                   type: 'movie',
                   movieName: movieList[i].name,
                   movieAsin: movieList[i].asin,
-                  score:movieList[i].score,
-                  commentNum:movieList[i].commentNum,
+                  score: movieList[i].score,
+                  commentNum: movieList[i].commentNum
                 }
                 this.nodes.add(newNode)
                 this.nodesArray.push(newNode)
@@ -492,16 +483,9 @@ export default {
     mostCooperateActorsButton() {
       this.initializeOptions()
 
-      var axios = require('axios')
-
-      var config = {
-        method: 'get',
-        url: BASE_URL + '/neo4j/relation/actors',
-        headers: { }
-      }
       this.loading = true
       // neo4j 查询
-      axios(config)
+      GetActorsOfNeo4j()
         .then(response => {
         // 将返回值添加成两个结点
           for (let i = 0; i < response.data.actor.length; ++i) {
@@ -514,26 +498,19 @@ export default {
             this.nodes.add(newNode)
             this.nodesArray.push(newNode)
           }
-          //获取查询结果
-          this.searchResult = "名为"+response.data.actor[0]+"的演员和名为"+response.data.actor[1]+"的演员,"+"共合作"+response.data.number+"次."
+          // 获取查询结果
+          this.searchResult = '名为' + response.data.actor[0] + '的演员和名为' + response.data.actor[1] + '的演员,' + '共合作' + response.data.number + '次.'
           this.hasResult = true
-          //防止查询速度结果
-          this.chartData.rows[2].speed = response.data.time
-          axios({
-            method: 'get',
-            url: BASE_URL + '/mysql/association/actor/cooperation',
-            headers: {}
-          }).then(response=>{
-            this.chartData.rows[0].speed = response.data.time
-            this.vchartsConfig.extend.title.text="演员之间的合作关系检索结果"
-          })
+          // 防止查询速度结果
+          this.chartData.rows[1].speed = response.data.time
+          GetMaxCooperationActor()
+            .then(response => {
+              this.chartData.rows[0].speed = response.data.time
+              this.vchartsConfig.extend.title.text = '演员之间的合作关系检索结果'
+            })
+
           // 根据两个演员获取它们出演过的电影
-          axios({
-            method: 'get',
-            url: BASE_URL + '/mysql/association/movie/actors',
-            params: { 'actor1': response.data.actor[0], 'actor2': response.data.actor[1] },
-            headers: {}
-          })
+          GetRelationsofActorsMysql(response.data.actor[0], response.data.actor[1])
             .then(res => {
               const movieList = res.data
               // 添加电影结点
@@ -545,8 +522,8 @@ export default {
                   type: 'movie',
                   movieName: movieList[i].name,
                   movieAsin: movieList[i].asin,
-                  score:movieList[i].score,
-                  commentNum:movieList[i].commentNum,
+                  score: movieList[i].score,
+                  commentNum: movieList[i].commentNum
                 }
                 this.nodes.add(newNode)
                 this.nodesArray.push(newNode)
@@ -602,39 +579,26 @@ export default {
             // eslint-disable-next-line eqeqeq
           } else if (this.nodesArray[selectedIndex].type === 'movie') {
             this.dialogVisible = true
-            this.dialogData.asin=this.nodesArray[selectedIndex].movieAsin
-            this.dialogData.name=this.nodesArray[selectedIndex].movieName
-            this.dialogData.score=this.nodesArray[selectedIndex].score
-            this.dialogData.commentNum=this.nodesArray[selectedIndex].commentNum
+            this.dialogData.asin = this.nodesArray[selectedIndex].movieAsin
+            this.dialogData.name = this.nodesArray[selectedIndex].movieName
+            this.dialogData.score = this.nodesArray[selectedIndex].score
+            this.dialogData.commentNum = this.nodesArray[selectedIndex].commentNum
             // 根据asin获取详细信息(主演、演员和导演)
-            var axios = require('axios');
-            axios({
-              method: 'get',
-              url: BASE_URL + '/mysql/association/movie/director',
-              params:{"movieAsin":this.dialogData.asin, "index": 0},
-              headers: {}
-            })
-            .then(response => {
-              this.dialogData.director=response.data.director
-            })
-            axios({
-              method: 'get',
-              url: BASE_URL + '/mysql/association/movie/mainActor',
-              params:{"movieAsin":this.dialogData.asin, "index": 0},
-              headers: {}
-            })
-            .then(response => {
-              this.dialogData.mainActor=response.data.mainActor
-            })
-            axios({
-              method: 'get',
-              url: BASE_URL + '/mysql/association/movie/actor',
-              params:{"movieAsin":this.dialogData.asin, "index": 0},
-              headers: {}
-            })
-            .then(response => {
-              this.dialogData.actor=response.data.actor
-            })
+            console.log(this.dialogData.asin)
+            GetDirectorsByMovieAsinAndIndex(this.dialogData.asin, 0)
+              .then(response => {
+                this.dialogData.director = response.data.director
+              })
+
+            GetMainActorByMovieAsinAndIndex(this.dialogData.asin, 0)
+              .then(response => {
+                this.dialogData.mainActor = response.data.director
+              })
+
+            GetActorByMovieAsinAndIndex(this.dialogData.asin, 0)
+              .then(response => {
+                this.dialogData.actor = response.data.director
+              })
             return
           }
         }

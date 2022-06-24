@@ -153,8 +153,18 @@ export const constantRoutes = [
     component: Layout,
     children: [
       {
-        path: 'https://github.com/Shotray/DataWarehouse',
+        path: 'https://github.com/redifinition/dotnet-backend',
         meta: { title: 'Github仓库', icon: 'link' }
+      }
+    ]
+  },
+  {
+    path: 'external-link',
+    component: Layout,
+    children: [
+      {
+        path: 'https://qiaoliang.website',
+        meta: { title: '我的博客', icon: 'link' }
       }
     ]
   },
